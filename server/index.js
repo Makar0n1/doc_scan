@@ -16,6 +16,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3000
 const isProd = process.env.NODE_ENV === 'production'
+const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 25 // лимит размера фото
 
 const app = express()
 app.disable('x-powered-by')
@@ -54,7 +55,7 @@ app.post('/api/logout', (req, res) => {
 // --- Загрузка файлов: только в память, лимит 10 МБ, только изображения ---
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype && file.mimetype.startsWith('image/')) cb(null, true)
     else {
@@ -141,7 +142,7 @@ app.use((err, _req, res, _next) => {
   // Логируем только сообщение об ошибке (без тел запросов/данных).
   console.error('Ошибка:', err.message)
   if (err instanceof multer.MulterError) {
-    const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Файл превышает лимит 10 МБ.' : 'Ошибка загрузки файла.'
+    const msg = err.code === 'LIMIT_FILE_SIZE' ? `Файл превышает лимит ${MAX_UPLOAD_MB} МБ.` : 'Ошибка загрузки файла.'
     return res.status(400).json({ error: msg })
   }
   res.status(err.status || 500).json({ error: err.message || 'Внутренняя ошибка сервера.' })
