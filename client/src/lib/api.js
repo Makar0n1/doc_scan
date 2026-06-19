@@ -65,8 +65,19 @@ export async function renderContractBlob(state, opts = {}) {
   if (!res.ok) throw await asError(res)
   const blob = await res.blob()
   const cd = res.headers.get('Content-Disposition') || ''
-  const match = cd.match(/filename="?([^"]+)"?/)
-  return { blob, filename: match ? match[1] : 'dogovor.docx' }
+  let filename = doc === 'act' ? 'akt.docx' : 'dogovor.docx'
+  const star = cd.match(/filename\*=UTF-8''([^;]+)/i) // читаемое имя (может быть кириллицей)
+  const plain = cd.match(/filename="?([^";]+)"?/)
+  if (star) {
+    try {
+      filename = decodeURIComponent(star[1])
+    } catch {
+      if (plain) filename = plain[1]
+    }
+  } else if (plain) {
+    filename = plain[1]
+  }
+  return { blob, filename }
 }
 
 // Инициирует скачивание Blob в браузере.

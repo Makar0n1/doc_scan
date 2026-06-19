@@ -112,15 +112,22 @@ app.post(
     let buffer = renderDoc(which, state)
     if (pdf) buffer = await convertDocxToPdf(buffer)
 
-    const num = String(state?.manual?.contract_number || '').replace(/[^\dA-Za-zА-Яа-я-]/g, '') || 'bez-nomera'
     const base = which === 'act' ? 'akt' : 'dogovor'
     const ext = pdf ? 'pdf' : 'docx'
     const type = pdf
       ? 'application/pdf'
       : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
+    // Имя файла: ASCII-безопасный fallback (HTTP-заголовок не принимает кириллицу) +
+    // читаемое имя через RFC 5987 (filename*) — корректно для «Б/Н» и любых символов.
+    const rawNum = String(state?.manual?.contract_number || '').trim()
+    const asciiNum = rawNum.replace(/[^\dA-Za-z-]/g, '') || 'bez-nomera'
+    const niceNum = (rawNum || 'bez-nomera').replace(/[\\/:*?"<>|\r\n]+/g, '-')
+    const asciiFile = `${base}-${asciiNum}.${ext}`
+    const niceFile = `${base}-${niceNum}.${ext}`
+
     res.setHeader('Content-Type', type)
-    res.setHeader('Content-Disposition', `attachment; filename="${base}-${num}.${ext}"`)
+    res.setHeader('Content-Disposition', `attachment; filename="${asciiFile}"; filename*=UTF-8''${encodeURIComponent(niceFile)}`)
     res.setHeader('Content-Length', buffer.length)
     res.end(buffer)
     buffer = null // помогаем сборщику мусора — документ не задерживается в памяти
