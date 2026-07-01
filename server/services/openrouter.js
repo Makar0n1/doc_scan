@@ -43,28 +43,19 @@ function parseModelJson(content) {
  * @param {Buffer[]} buffers — изображения (1 для СРТС, 2 для паспорта)
  * @returns {Promise<object>}
  */
-export async function extractWithModel(systemPrompt, buffers) {
+// Один сетевой вызов к модели + парсинг JSON с одним повтором при сбое парсинга.
+async function requestJson(messages) {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) throw new Error('Не задан OPENROUTER_API_KEY')
-
-  const dataUrls = await Promise.all(buffers.map(toDataUrl))
-  const userContent = [
-    { type: 'text', text: 'Извлеки данные из документа по схеме. Верни только JSON.' },
-    ...dataUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
-  ]
 
   const body = {
     model: MODEL,
     temperature: 0,
     // Запрет провайдеру собирать/логировать данные запроса.
     provider: { data_collection: 'deny' },
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userContent },
-    ],
+    messages,
   }
 
-  // Один вызов сети; парсинг с одним повтором.
   async function callOnce() {
     const res = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -82,14 +73,44 @@ export async function extractWithModel(systemPrompt, buffers) {
     return json?.choices?.[0]?.message?.content
   }
 
-  let lastErr
   for (let attempt = 0; attempt < 2; attempt++) {
     const content = await callOnce()
     try {
       return parseModelJson(content)
-    } catch (e) {
-      lastErr = e
+    } catch {
+      /* повторим один раз */
     }
   }
   throw new Error('Не удалось разобрать JSON-ответ модели после повторной попытки')
+}
+
+/**
+ * Один вызов модели: системный промпт + N изображений. Парсит JSON.
+ * @param {string} systemPrompt
+ * @param {Buffer[]} buffers — изображения (1 для СРТС, 2 для паспорта)
+ * @returns {Promise<object>}
+ */
+export async function extractWithModel(systemPrompt, buffers) {
+  const dataUrls = await Promise.all(buffers.map(toDataUrl))
+  const userContent = [
+    { type: 'text', text: 'Извлеки данные из документа по схеме. Верни только JSON.' },
+    ...dataUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+  ]
+  return requestJson([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userContent },
+  ])
+}
+
+/**
+ * Текстовый вызов модели (без изображений): системный промпт + текст. Парсит JSON.
+ * @param {string} systemPrompt
+ * @param {string} userText
+ * @returns {Promise<object>}
+ */
+export async function chatJson(systemPrompt, userText) {
+  return requestJson([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userText },
+  ])
 }

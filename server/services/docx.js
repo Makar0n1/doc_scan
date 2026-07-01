@@ -4,14 +4,21 @@ import { fileURLToPath } from 'node:url'
 import PizZip from 'pizzip'
 import Docxtemplater from 'docxtemplater'
 import { buildContractData } from '../../shared/contractData.js'
+import { buildSaleData } from '../../shared/saleData.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Шаблоны документов в корне проекта.
+//  contract/act — комиссия; dkp/akt_dkp — продажа (договор купли-продажи + акт к нему).
 const TEMPLATES = {
   contract: path.resolve(__dirname, '../../template.docx'),
   act: path.resolve(__dirname, '../../template_akt.docx'),
+  dkp: path.resolve(__dirname, '../../template_dkp.docx'),
+  akt_dkp: path.resolve(__dirname, '../../template_akt_dkp.docx'),
 }
+
+// Какие документы строятся из данных продажи (buildSaleData), а не комиссии.
+const SALE_DOCS = new Set(['dkp', 'akt_dkp'])
 
 // Шаблоны читаем один раз в память (на диск при работе ничего не пишем).
 const cache = {}
@@ -26,10 +33,11 @@ function getTemplate(which) {
 }
 
 /**
- * Рендерит документ ('contract' | 'act') по шаблону. Возвращает Buffer .docx.
- * Оба документа используют один и тот же набор данных (buildContractData).
- * @param {'contract'|'act'} which
- * @param {{passport?:object, vehicle?:object, manual?:object}} state
+ * Рендерит документ по шаблону. Возвращает Buffer .docx.
+ *  • 'contract'|'act'    — комиссия (buildContractData);
+ *  • 'dkp'|'akt_dkp'     — продажа (buildSaleData).
+ * @param {'contract'|'act'|'dkp'|'akt_dkp'} which
+ * @param {object} state состояние формы соответствующего пайплайна
  * @returns {Buffer}
  */
 export function renderDoc(which, state) {
@@ -40,6 +48,6 @@ export function renderDoc(which, state) {
     delimiters: { start: '{', end: '}' },
     nullGetter: () => '', // пустые/отсутствующие поля — пустой строкой, не "undefined"
   })
-  doc.render(buildContractData(state))
+  doc.render(SALE_DOCS.has(which) ? buildSaleData(state) : buildContractData(state))
   return doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' })
 }

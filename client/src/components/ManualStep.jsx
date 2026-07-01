@@ -1,23 +1,40 @@
 import { useState } from 'react'
 import Icon from './Icon.jsx'
 import Field from './Field.jsx'
-import { MANUAL_FIELDS, AUTO_WORDS, manualMissing } from '../lib/fields.js'
+import { MANUAL_FIELDS, AUTO_WORDS, manualMissing, contractNumberValid } from '../lib/fields.js'
 import { dollarsWords, rublesWords } from '../../../shared/num2words.js'
 
 const WORD_GEN = { price_words: dollarsWords, commission_words: rublesWords }
 
 /**
  * Шаг ручного ввода полей договора. Сумма прописью (со склонением валюты)
- * подставляется автоматически из числа и редактируется.
+ * подставляется автоматически из числа и редактируется. Конфигурация полей,
+ * генераторов прописи и проверки заполненности зависит от пайплайна (props).
  */
-export default function ManualStep({ manual, setManual, onBack, onNext }) {
+export default function ManualStep({
+  manual,
+  setManual,
+  onBack,
+  onNext,
+  fields = MANUAL_FIELDS,
+  autoMap = AUTO_WORDS,
+  wordGen = WORD_GEN,
+  missing = manualMissing,
+  subtitle = 'Заполните поля, которых нет в документах.',
+}) {
   const [autoWords, setAutoWords] = useState({ price_words: true, commission_words: true })
   const [error, setError] = useState('')
 
+  const numInvalid = !contractNumberValid(manual.contract_number)
+
   function next() {
-    const missing = manualMissing(manual)
-    if (missing.length) {
-      setError('Заполните: ' + missing.join(', ') + '.')
+    if (numInvalid) {
+      setError('Номер договора: допустимы только число или «Б/Н». Можно оставить пустым — будет «Б/Н».')
+      return
+    }
+    const m = missing(manual)
+    if (m.length) {
+      setError('Заполните: ' + m.join(', ') + '.')
       return
     }
     setError('')
@@ -26,8 +43,8 @@ export default function ManualStep({ manual, setManual, onBack, onNext }) {
 
   function handleChange(key, val) {
     setManual(key, val)
-    const wordsKey = Object.keys(AUTO_WORDS).find((wk) => AUTO_WORDS[wk] === key)
-    if (wordsKey && autoWords[wordsKey]) setManual(wordsKey, WORD_GEN[wordsKey](val))
+    const wordsKey = Object.keys(autoMap).find((wk) => autoMap[wk] === key)
+    if (wordsKey && autoWords[wordsKey]) setManual(wordsKey, wordGen[wordsKey](val))
   }
 
   function handleWords(key, val) {
@@ -37,18 +54,18 @@ export default function ManualStep({ manual, setManual, onBack, onNext }) {
 
   function regen(wordsKey) {
     setAutoWords((s) => ({ ...s, [wordsKey]: true }))
-    setManual(wordsKey, WORD_GEN[wordsKey](manual[AUTO_WORDS[wordsKey]]))
+    setManual(wordsKey, wordGen[wordsKey](manual[autoMap[wordsKey]]))
   }
 
   return (
     <div className="animate-fade-up">
       <header className="mb-5">
         <h2 className="text-lg font-bold text-slate-900 sm:text-xl">Реквизиты договора</h2>
-        <p className="mt-1 text-sm text-slate-500">Заполните поля, которых нет в документах.</p>
+        <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
       </header>
 
       <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2">
-        {MANUAL_FIELDS.map((f) => {
+        {fields.map((f) => {
           const isWords = !!f.auto
           return (
             <Field
@@ -57,6 +74,8 @@ export default function ManualStep({ manual, setManual, onBack, onNext }) {
               value={manual[f.key]}
               placeholder={f.placeholder}
               full={f.full}
+              warn={f.key === 'contract_number' && numInvalid}
+              warnText="Только число или «Б/Н»"
               onChange={(val) => (isWords ? handleWords(f.key, val) : handleChange(f.key, val))}
               trailing={
                 isWords ? (

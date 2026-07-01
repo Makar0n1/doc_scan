@@ -84,11 +84,14 @@ export function dollarsWords(value) {
  * Сумма в белорусских рублях прописью со склонением:
  * 1→белорусский рубль, 2-4→белорусских рубля, 5+→белорусских рублей.
  * Напр.: 300 → «триста белорусских рублей 00 копеек».
+ * @param {number|string} value
+ * @param {{kopecks?:boolean}} [opts] kopecks=false — без «00 копеек» (для ДКП).
  */
-export function rublesWords(value) {
+export function rublesWords(value, { kopecks = true } = {}) {
   const n = toInt(value)
   if (!Number.isFinite(n)) return ''
   const adj = plural(n, ['белорусский', 'белорусских', 'белорусских'])
   const noun = plural(n, ['рубль', 'рубля', 'рублей'])
-  return `${numberToWordsRu(n)} ${adj} ${noun} 00 копеек`
+  const base = `${numberToWordsRu(n)} ${adj} ${noun}`
+  return kopecks ? `${base} 00 копеек` : base
 }

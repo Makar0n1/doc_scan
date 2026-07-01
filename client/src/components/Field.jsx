@@ -15,7 +15,7 @@ function AutoTextarea({ className, value, ...props }) {
 }
 
 // Одно поле формы. Подсвечивается, если warn=true. multiline — перенос строк.
-export default function Field({ label, value, onChange, warn, placeholder, full, trailing, multiline }) {
+export default function Field({ label, value, onChange, warn, warnText = 'проверьте вручную', placeholder, full, trailing, multiline }) {
   const cls = ['input', warn ? 'input-warn' : '', multiline ? 'resize-none overflow-hidden leading-snug' : ''].join(' ')
   return (
     <div className={full ? 'sm:col-span-2' : ''}>
@@ -30,7 +30,7 @@ export default function Field({ label, value, onChange, warn, placeholder, full,
       )}
       {warn && (
         <p className="mt-1 flex items-center gap-1 text-xs font-medium text-warn-700">
-          <Icon name="alert" className="h-3.5 w-3.5" /> проверьте вручную
+          <Icon name="alert" className="h-3.5 w-3.5" /> {warnText}
         </p>
       )}
     </div>

@@ -26,7 +26,7 @@ export function titleCaseName(value) {
 }
 
 // "Штепа К.И." — фамилия + инициалы без пробела между инициалами.
-function shortFio(surname, name, patronymic) {
+export function shortFio(surname, name, patronymic) {
   const s = titleCaseName(surname)
   const initials = [name, patronymic]
     .map(clean)

@@ -8,7 +8,7 @@ import Icon from './Icon.jsx'
  * в браузере через docx-preview. Документ масштабируется по ШИРИНЕ контейнера
  * (без горизонтального скролла), вертикальный скролл сохраняется.
  */
-export default function DocxPreview({ state, doc = 'contract', onBlob }) {
+export default function DocxPreview({ state, doc = 'contract', onBlob, signatureAnchor = /КОМИССИОНЕР/i }) {
   const viewportRef = useRef(null) // область со скроллом
   const contentRef = useRef(null) // сюда рендерит docx-preview
   const [status, setStatus] = useState('loading') // loading | ready | error
@@ -18,12 +18,14 @@ export default function DocxPreview({ state, doc = 'contract', onBlob }) {
   // у первого абзаца в ячейке таблицы, поэтому блок подписей прилипает к реквизитам.
   // В скачанном .docx отступ есть — здесь добавляем его визуально.
   function applyPreviewTweaks() {
+    if (!signatureAnchor) return // напр. для ДКП блок подписей в одной строке — отступ не нужен
     const root = contentRef.current
     if (!root) return
     const tables = [...root.querySelectorAll('table')]
-    const reqTable = [...tables].reverse().find((t) => /КОМИССИОНЕР/i.test(t.textContent || ''))
+    const reqTable = [...tables].reverse().find((t) => signatureAnchor.test(t.textContent || ''))
     if (!reqTable) return
     const rows = reqTable.querySelectorAll('tr')
+    if (rows.length < 2) return // нет отдельной строки подписей — ничего не двигаем
     const lastRow = rows[rows.length - 1] // строка с подписями
     lastRow?.querySelectorAll('td, th').forEach((cell) => {
       cell.style.paddingTop = '38px'

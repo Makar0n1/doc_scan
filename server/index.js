@@ -4,10 +4,11 @@ import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import express from 'express'
 import multer from 'multer'
-import { extractWithModel } from './services/openrouter.js'
+import { extractWithModel, chatJson } from './services/openrouter.js'
 import { renderDoc } from './services/docx.js'
 import { convertDocxToPdf } from './services/pdf.js'
-import { buildPrompt, DOC_TYPES } from './prompts.js'
+import { parseCommissionContract } from './services/parseCommission.js'
+import { buildPrompt, composeAddressPrompt, DOC_TYPES } from './prompts.js'
 import {
   requireAuth, authEnabled, passwordValid, signSession,
   sessionCookie, clearСookieHeader, verifySession, parseCookies, COOKIE_NAME,
@@ -66,6 +67,22 @@ const upload = multer({
   },
 })
 
+// Загрузка договора комиссии (.docx) для пайплайна продажи — тоже только в память.
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+const uploadDoc = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const ok = file.mimetype === DOCX_MIME || /\.docx$/i.test(file.originalname || '')
+    if (ok) cb(null, true)
+    else {
+      const e = new Error('Загрузите договор комиссии в формате Word (.docx)')
+      e.status = 400
+      cb(e)
+    }
+  },
+})
+
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 
 /**
@@ -97,7 +114,45 @@ app.post(
 )
 
 /**
- * POST /api/generate?doc=contract|act&format=docx|pdf
+ * POST /api/compose-address
+ * Тело: { issuing_authority, raw_address }. Возвращает полный адрес прописки,
+ * собранный по штампу и органу выдачи (область + район/город из органа выдачи).
+ */
+app.post(
+  '/api/compose-address',
+  requireAuth,
+  wrap(async (req, res) => {
+    const issuing = String(req.body?.issuing_authority || '').trim()
+    const raw = String(req.body?.raw_address || '').trim()
+    // Нечего достраивать — отдаём как есть (без обращения к модели).
+    if (!raw || !issuing) return res.json({ registration_address_ru: raw })
+    const userText = `Орган выдачи паспорта: «${issuing}»\nШтамп прописки: «${raw}»`
+    const out = await chatJson(composeAddressPrompt(), userText)
+    const value = String(out?.registration_address_ru || '').trim() || raw
+    res.json({ registration_address_ru: value })
+  })
+)
+
+/**
+ * POST /api/parse-commission
+ * Поле файла: file (.docx договора комиссии). Возвращает характеристики ТС и
+ * № / дату договора комиссии для подстановки в ДКП и акт продажи.
+ */
+app.post(
+  '/api/parse-commission',
+  requireAuth,
+  uploadDoc.single('file'),
+  wrap(async (req, res) => {
+    const file = req.file
+    if (!file) return res.status(400).json({ error: 'Не получен файл договора комиссии.' })
+    const data = parseCommissionContract(file.buffer)
+    file.buffer = null // обнуляем буфер сразу после использования
+    res.json(data)
+  })
+)
+
+/**
+ * POST /api/generate?doc=contract|act|dkp|akt_dkp&format=docx|pdf
  * Тело: { passport, vehicle, manual } — собранное состояние формы.
  * Рендерит документ в памяти и отдаёт на скачивание. PDF — через LibreOffice.
  */
@@ -106,13 +161,14 @@ app.post(
   requireAuth,
   wrap(async (req, res) => {
     const state = req.body || {}
-    const which = req.query.doc === 'act' ? 'act' : 'contract'
+    const which = ['contract', 'act', 'dkp', 'akt_dkp'].includes(req.query.doc) ? req.query.doc : 'contract'
     const pdf = req.query.format === 'pdf'
 
     let buffer = renderDoc(which, state)
     if (pdf) buffer = await convertDocxToPdf(buffer)
 
-    const base = which === 'act' ? 'akt' : 'dogovor'
+    const BASE = { contract: 'dogovor', act: 'akt', dkp: 'dkp', akt_dkp: 'akt-dkp' }
+    const base = BASE[which] || 'dogovor'
     const ext = pdf ? 'pdf' : 'docx'
     const type = pdf
       ? 'application/pdf'

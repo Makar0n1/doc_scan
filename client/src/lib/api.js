@@ -50,6 +50,39 @@ export async function extractDoc(doc, file) {
 }
 
 /**
+ * Достраивает полный адрес прописки по штампу и органу выдачи паспорта
+ * (область + район/город берутся из органа выдачи). Не критично: при ошибке
+ * вызывающий код оставляет исходный адрес.
+ * @param {string} issuingAuthority орган выдачи (творительный падеж)
+ * @param {string} rawAddress распознанный штамп прописки
+ * @returns {Promise<string>} полный адрес
+ */
+export async function composeAddress(issuingAuthority, rawAddress) {
+  const res = await fetch('/api/compose-address', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ issuing_authority: issuingAuthority, raw_address: rawAddress }),
+  })
+  if (!res.ok) throw await asError(res)
+  const data = await res.json()
+  return data.registration_address_ru || rawAddress
+}
+
+/**
+ * Разбирает ранее сгенерированный договор комиссии (.docx): характеристики ТС
+ * и № / дата договора комиссии (для пайплайна продажи).
+ * @param {File} file .docx
+ * @returns {Promise<object>}
+ */
+export async function parseCommission(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch('/api/parse-commission', { method: 'POST', body: fd })
+  if (!res.ok) throw await asError(res)
+  return res.json()
+}
+
+/**
  * Рендерит документ на бэкенде и возвращает Blob (для предпросмотра и скачивания).
  * @param {{passport:object, vehicle:object, manual:object}} state
  * @param {{doc?:'contract'|'act', format?:'docx'|'pdf'}} opts

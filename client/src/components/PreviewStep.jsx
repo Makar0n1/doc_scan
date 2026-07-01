@@ -3,13 +3,13 @@ import Icon from './Icon.jsx'
 import DocxPreview from './DocxPreview.jsx'
 import { downloadBlob, renderContractBlob } from '../lib/api.js'
 
-const TABS = [
+const DEFAULT_TABS = [
   { id: 'contract', label: 'Договор' },
   { id: 'act', label: 'Акт' },
 ]
 
-export default function PreviewStep({ state, onBack, onRestart }) {
-  const [active, setActive] = useState('contract')
+export default function PreviewStep({ state, onBack, onRestart, tabs = DEFAULT_TABS, signatureAnchor = /КОМИССИОНЕР/i }) {
+  const [active, setActive] = useState(tabs[0].id)
   const [rendered, setRendered] = useState(null) // кэш .docx активного документа (для Word)
   const [error, setError] = useState('')
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -43,7 +43,7 @@ export default function PreviewStep({ state, onBack, onRestart }) {
       {/* Вкладки документов */}
       <div className="mb-4 flex justify-center">
         <div className="inline-flex rounded-lg bg-slate-100 p-0.5 sm:rounded-xl sm:p-1">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -62,7 +62,7 @@ export default function PreviewStep({ state, onBack, onRestart }) {
         </div>
       </div>
 
-      <DocxPreview key={active} state={state} doc={active} onBlob={setRendered} />
+      <DocxPreview key={active} state={state} doc={active} onBlob={setRendered} signatureAnchor={signatureAnchor} />
 
       {error && (
         <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

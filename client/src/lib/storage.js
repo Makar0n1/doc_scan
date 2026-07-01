@@ -1,7 +1,7 @@
 // Сохранение состояния мастера в localStorage — переживает перезагрузку страницы.
 // Сбрасывается только при «Создать новый договор».
 
-const KEY = 'avto-komissiya:state:v2'
+const KEY = 'avto-komissiya:state:v3'
 
 export function loadState() {
   try {

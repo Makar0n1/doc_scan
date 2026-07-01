@@ -41,6 +41,11 @@ const F = {
   certificate_date: { label: 'Дата выдачи СРТС', placeholder: 'ДД.ММ.ГГГГ' },
   max_mass_kg: { label: 'Макс. масса, кг' },
   unladen_mass_kg: { label: 'Масса без нагрузки, кг' },
+  // Поля пайплайна продажи (из договора комиссии)
+  mileage: { label: 'Пробег, км' },
+  cert_line: { label: 'Свидетельство о регистрации', full: true, placeholder: '№ … от ДД.ММ.ГГГГ' },
+  comm_number: { label: '№ договора комиссии' },
+  comm_date: { label: 'Дата договора комиссии', placeholder: 'например: 29 мая 2026' },
 }
 export const fieldMeta = (key) => F[key] || { label: key }
 
@@ -89,7 +94,7 @@ export const STEPS = [
 
 // Поля договора (ручной ввод).
 export const MANUAL_FIELDS = [
-  { key: 'contract_number', label: '№ договора' },
+  { key: 'contract_number', label: '№ договора', placeholder: 'число или Б/Н (пусто → Б/Н)' },
   { key: 'contract_date', label: 'Дата договора', placeholder: 'например: 19 июня 2026 г.' },
   { key: 'mileage', label: 'Пробег, км' },
   { key: 'price', label: 'Стоимость ТС, $' },
@@ -98,6 +103,87 @@ export const MANUAL_FIELDS = [
   { key: 'commission_words', label: 'Вознаграждение прописью', full: true, auto: 'commission' },
 ]
 export const AUTO_WORDS = { price_words: 'price', commission_words: 'commission' }
+
+// ——— Пайплайн ПРОДАЖИ (договор купли-продажи + акт к нему) ———
+
+// 3 загружаемых страницы паспорта покупателя (характеристики ТС берём из договора комиссии).
+export const SALE_DOC_IDS = ['passport_main', 'passport_names', 'passport_reg']
+
+// Внутренние страницы проверки продажи.
+export const SALE_REVIEW_PAGES = [
+  {
+    key: 'passport_main',
+    title: 'Паспорт покупателя: фото и MRZ',
+    subtitle: 'идент. номер, номер паспорта, дата выдачи',
+    docId: 'passport_main',
+    fields: ['identification_number', 'passport_number', 'date_of_issue'],
+  },
+  {
+    key: 'passport_names',
+    title: 'Паспорт покупателя: ФИО и орган',
+    subtitle: 'фамилия, имя, отчество, кем выдан',
+    docId: 'passport_names',
+    fields: ['surname_ru', 'name_ru', 'patronymic_ru', 'issuing_authority_ru'],
+  },
+  {
+    key: 'address',
+    title: 'Адрес покупателя',
+    subtitle: 'прописка покупателя из паспорта',
+    addressSingle: true, // 1 фото (прописка) + поле адреса, без сверки с СРТС
+    photo: 'passport_reg',
+  },
+  {
+    key: 'vehicle',
+    title: 'Данные авто из договора комиссии',
+    subtitle: 'характеристики ТС и реквизиты ДК — проверьте',
+    vehicle: true, // без фото: поля из распознанного договора комиссии
+    fields: ['make_model', 'vin', 'reg_number', 'year', 'color_ru', 'vehicle_type_ru', 'body_type_ru', 'mileage', 'cert_line', 'comm_number', 'comm_date'],
+  },
+]
+
+// Реквизиты продажи (ручной ввод). Номер и дата — общие для ДКП и акта.
+export const SALE_MANUAL_FIELDS = [
+  { key: 'contract_number', label: '№ договора (ДКП и акта)', placeholder: 'число или Б/Н (пусто → Б/Н)' },
+  { key: 'contract_date', label: 'Дата (ДКП и акта)', placeholder: 'например: 30 июня 2026 г.' },
+  { key: 'price', label: 'Стоимость ТС, руб.' },
+  { key: 'price_words', label: 'Стоимость прописью', full: true, auto: 'price' },
+]
+export const SALE_AUTO_WORDS = { price_words: 'price' }
+
+export function makeEmptySaleManual() {
+  return { contract_number: '', contract_date: todayRu(), price: '', price_words: '' }
+}
+export function makeEmptySaleVehicle() {
+  return {
+    vehicle_type_ru: '', body_type_ru: '', make_model: '', vin: '', color_ru: '',
+    mileage: '', year: '', reg_number: '', cert_line: '', comm_number: '', comm_date: '',
+  }
+}
+
+export function saleReviewMissing(docs, address, vehicle) {
+  const m = []
+  const add = (label, val) => { if (!String(val || '').trim()) m.push(label) }
+  add('Фамилия', docs.passport_names.fields.surname_ru)
+  add('Имя', docs.passport_names.fields.name_ru)
+  add('Идент. номер', docs.passport_main.fields.identification_number)
+  add('Номер паспорта', docs.passport_main.fields.passport_number)
+  add('Дата выдачи', docs.passport_main.fields.date_of_issue)
+  add('Адрес покупателя', address)
+  add('Марка и модель', vehicle.make_model)
+  add('VIN', vehicle.vin)
+  add('Рег. номер', vehicle.reg_number)
+  add('№ договора комиссии', vehicle.comm_number)
+  add('Дата договора комиссии', vehicle.comm_date)
+  return m
+}
+export function saleManualMissing(manual) {
+  const m = []
+  const add = (label, key) => { if (!String(manual[key] || '').trim()) m.push(label) }
+  // № договора не обязателен: пусто → «Б/Н» (валидность проверяется отдельно).
+  add('Дата договора', 'contract_date')
+  add('Стоимость', 'price')
+  return m
+}
 
 const RU_MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
 export function todayRu(d = new Date()) {
@@ -126,11 +212,23 @@ export function reviewMissing(docs, address) {
 export function manualMissing(manual) {
   const m = []
   const add = (label, key) => { if (!String(manual[key] || '').trim()) m.push(label) }
-  add('№ договора', 'contract_number')
+  // № договора не обязателен: пусто → «Б/Н» (валидность проверяется отдельно).
   add('Дата договора', 'contract_date')
   add('Стоимость', 'price')
   add('Вознаграждение', 'commission')
   return m
+}
+
+// Номер договора: пусто → «Б/Н»; число — ок; «б/н»/«Б/Н» (любой регистр) → «Б/Н»;
+// иначе (непустое и не число и не Б/Н) — недопустимо (поле подсвечивается).
+const BN_RE = /^б\s*\/\s*н$/i
+export function contractNumberValid(v) {
+  const s = String(v || '').trim()
+  return s === '' || /^\d+$/.test(s) || BN_RE.test(s)
+}
+export function normalizeContractNumber(v) {
+  const s = String(v || '').trim()
+  return s === '' || BN_RE.test(s) ? 'Б/Н' : s
 }
 
 export function isFieldWarn(key, value, lowConf = []) {
@@ -139,10 +237,17 @@ export function isFieldWarn(key, value, lowConf = []) {
   return false
 }
 
-export function makeEmptyState() {
+// mode: null | 'commission' | 'sale'. Реквизиты и saleVehicle зависят от режима.
+export function makeEmptyState(mode = null) {
   const docs = {}
   for (const id of DOC_IDS) docs[id] = { fields: {}, lowConf: [], photo: null }
-  return { step: 0, maxStep: 0, reviewPage: 0, docs, address: '', addressConflict: false, manual: makeEmptyManual() }
+  return {
+    mode,
+    step: 0, maxStep: 0, reviewPage: 0,
+    docs, address: '', addressConflict: false,
+    manual: mode === 'sale' ? makeEmptySaleManual() : makeEmptyManual(),
+    saleVehicle: makeEmptySaleVehicle(),
+  }
 }
 
 // Сверка адреса прописки «по якорю».
@@ -206,6 +311,18 @@ export function assembleContractState(state) {
   return {
     passport,
     vehicle: mergeNonEmpty(d.vehicle_front.fields),
-    manual: state.manual,
+    manual: { ...state.manual, contract_number: normalizeContractNumber(state.manual.contract_number) },
+  }
+}
+
+// Плоское состояние для рендера ДКП и акта продажи.
+export function assembleSaleState(state) {
+  const d = state.docs
+  const buyer = mergeNonEmpty(d.passport_names.fields, d.passport_main.fields)
+  buyer.registration_address_ru = state.address
+  return {
+    buyer,
+    vehicle: state.saleVehicle,
+    manual: { ...state.manual, contract_number: normalizeContractNumber(state.manual.contract_number) },
   }
 }
